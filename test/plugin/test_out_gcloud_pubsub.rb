@@ -75,14 +75,14 @@ class GcloudPubSubOutputTest < Test::Unit::TestCase
         autocreate_topic true
       ])
 
-      @pubsub_mock.topic("topic-test", autocreate: true).once { @publisher }
+      @pubsub_mock.topic("topic-test", skip_lookup: true).once { @publisher }
       d.run
     end
 
     test '40x error occurred on connecting to Pub/Sub' do
       d = create_driver
 
-      @pubsub_mock.topic('topic-test', autocreate: false).once do
+      @pubsub_mock.topic('topic-test', skip_lookup: true).once do
         raise Google::Cloud::NotFoundError.new('TEST')
       end
 
@@ -94,7 +94,7 @@ class GcloudPubSubOutputTest < Test::Unit::TestCase
     test '50x error occurred on connecting to Pub/Sub' do
       d = create_driver
 
-      @pubsub_mock.topic('topic-test', autocreate: false).times(5) do
+      @pubsub_mock.topic('topic-test', skip_lookup: true).times(5) do
         raise Google::Cloud::UnavailableError.new('TEST')
       end
 
@@ -106,7 +106,7 @@ class GcloudPubSubOutputTest < Test::Unit::TestCase
     test 'topic is nil' do
       d = create_driver
 
-      @pubsub_mock.topic('topic-test', autocreate: false).once { nil }
+      @pubsub_mock.topic('topic-test', skip_lookup: true).once { nil }
 
       assert_raise Fluent::GcloudPubSub::Error do
         d.run {}
@@ -196,5 +196,50 @@ class GcloudPubSubOutputTest < Test::Unit::TestCase
         end
       end
     end
+  end
+
+  sub_test_case 'NotFoundError' do
+    setup do
+      @publisher = mock!
+      @pubsub_mock = mock!
+      @google_cloud_pubsub_stub = stub(Google::Cloud::Pubsub)
+    end
+
+    test 'raises NotFoundError on publishing to non-existing topic' do
+      d = create_driver
+
+      @google_cloud_pubsub_stub.new.once { @pubsub_mock }
+      @pubsub_mock.topic("topic-test", skip_lookup: true).once { @publisher }
+      @publisher.publish.once { raise Google::Cloud::NotFoundError.new('5:Resource not found (resource=marc-sg-publish-something)') }
+
+      assert_raises Google::Cloud::NotFoundError do
+        d.run(default_tag: "test") do
+          d.feed([{'a' => 1, 'b' => 2}])
+        end
+      end
+    end
+  end
+
+  sub_test_case 'UnauthenticatedError' do
+    setup do
+      @publisher = mock!
+      @pubsub_mock = mock!
+      @google_cloud_pubsub_stub = stub(Google::Cloud::Pubsub)
+    end
+
+    test 'renew publisher on UnauthenticatedError' do
+      d = create_driver
+
+      @google_cloud_pubsub_stub.new.twice { @pubsub_mock }
+      @pubsub_mock.topic("topic-test", skip_lookup: true).twice { @publisher }
+      @publisher.publish.once { raise Google::Cloud::UnauthenticatedError.new('16:Deadline Exceeded') }
+
+      assert_raises Google::Cloud::UnauthenticatedError do
+        d.run(default_tag: "test") do
+          d.feed([{'a' => 1, 'b' => 2}])
+        end
+      end
+    end
+
   end
 end

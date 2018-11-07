@@ -12,10 +12,11 @@ module Fluent
       RETRY_COUNT = 5
       RETRYABLE_ERRORS = [Google::Cloud::UnavailableError, Google::Cloud::DeadlineExceededError, Google::Cloud::InternalError]
 
-      def initialize(project, key, topic_name, autocreate_topic)
+      # autocreate_topic is unused
+      def initialize(project, key, topic_name, skip_lookup)
         Retryable.retryable(tries: RETRY_COUNT, on: RETRYABLE_ERRORS) do
           pubsub = Google::Cloud::Pubsub.new project: project, keyfile: key
-          @client = pubsub.topic topic_name, autocreate: autocreate_topic
+          @client = pubsub.topic topic_name, skip_lookup: skip_lookup
         end
         raise Error.new "topic:#{topic_name} does not exist." if @client.nil?
       end

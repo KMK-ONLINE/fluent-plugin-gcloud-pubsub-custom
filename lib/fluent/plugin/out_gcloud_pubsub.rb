@@ -19,6 +19,8 @@ module Fluent::Plugin
     config_param :topic,              :string
     desc "If set to `true`, specified topic will be created when it doesn't exist."
     config_param :autocreate_topic,   :bool,    :default => false
+    desc "Custom param - skips topic retrieval; service accounts can just solely have PubSub Publishing roles when set to true"
+    config_param :skip_lookup,   :bool,    :default => true
     desc 'Publishing messages count per request to Cloud Pub/Sub.'
     config_param :max_messages,       :integer, :default => 1000
     desc 'Publishing messages bytesize per request to Cloud Pub/Sub.'
@@ -44,7 +46,7 @@ module Fluent::Plugin
 
     def start
       super
-      @publisher = Fluent::GcloudPubSub::Publisher.new @project, @key, @topic, @autocreate_topic
+      @publisher = Fluent::GcloudPubSub::Publisher.new @project, @key, @topic, @skip_lookup
       log.debug "connected topic:#{@topic} in project #{@project}"
     end
 
@@ -83,6 +85,10 @@ module Fluent::Plugin
       end
     rescue Fluent::GcloudPubSub::RetryableError => ex
       log.warn "Retryable error occurs. Fluentd will retry.", error_message: ex.to_s, error_class: ex.class.to_s
+      raise ex
+    rescue Google::Cloud::UnauthenticatedError => ex
+      log.warn "Encountered UnauthenticatedError, renewing @publisher instance", error_message: ex.to_s, error_class: ex.class.to_s
+      @publisher = Fluent::GcloudPubSub::Publisher.new @project, @key, @topic, @skip_lookup
       raise ex
     rescue => ex
       log.error "unexpected error", error_message: ex.to_s, error_class: ex.class.to_s
